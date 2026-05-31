@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grounds Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #f0f0f0; }
+    #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 16px; }
+    #login-screen h1 { font-size: 1.8rem; }
+    #login-screen input { padding: 12px; font-size: 1rem; border-radius: 8px; border: none; width: 260px; }
+    #login-screen button { padding: 12px 32px; font-size: 1rem; background: #4a9eff; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    #login-error { color: #ff6b6b; font-size: 0.9rem; }
+    #app { display: none; }
+    #site-list { padding: 24px; }
+    #site-list h1 { font-size: 1.4rem; margin-bottom: 16px; }
+    .site-card { background: #2a2a2a; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .site-card:hover { background: #333; }
+    .site-card .site-name { font-size: 1.1rem; font-weight: 600; }
+    .site-card .site-status { font-size: 0.85rem; color: #aaa; }
+    #add-site-btn { margin-top: 8px; padding: 12px 20px; background: #4a9eff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; width: 100%; }
+    #site-view { display: none; padding: 16px; }
+    #site-view-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    #back-btn { background: #333; border: none; color: #f0f0f0; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; }
+    #site-view h2 { font-size: 1.3rem; }
+    #map-container { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+    #map-container img { width: 100%; display: block; }
+    #zone-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    #zone-controls { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+    #zone-controls button { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+    #draw-btn { background: #4a9eff; color: white; }
+    #draw-btn.active { background: #ff9f43; }
+    #delete-btn { background: #ff6b6b; color: white; }
+    #week-btn { background: #54a0ff; color: white; }
+    .zone-panel { margin-top: 16px; }
+    .zone-item { background: #2a2a2a; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .zone-item-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .zone-label { font-weight: 600; }
+    .status-btn { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+    .status-done { background: #26de81; color: #000; }
+    .status-attention { background: #ff9f43; color: #000; }
+    .status-blocked { background: #ff6b6b; color: #fff; }
+    .status-pending { background: #444; color: #aaa; }
+    .zone-note { width: 100%; background: #1a1a1a; border: 1px solid #444; color: #f0f0f0; border-radius: 6px; padding: 8px; font-size: 0.9rem; resize: vertical; margin-top: 4px; }
+    #new-week-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+    #new-week-modal.open { display: flex; }
+    .modal-box { background: #2a2a2a; border-radius: 12px; padding: 24px; width: 300px; }
+    .modal-box h3 { margin-bottom: 12px; }
+    .modal-box p { color: #aaa; font-size: 0.9rem; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions button { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; }
+    .btn-confirm { background: #26de81; color: #000; }
+    .btn-cancel { background: #444; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div id="login-screen">
+  <h1>🌿 Grounds Tracker</h1>
+  <input type="password" id="password-input" placeholder="Password" />
+  <button onclick="login()">Enter</button>
+  <span id="login-error"></span>
+</div>
+
+<div id="app">
+  <div id="site-list">
+    <h1>Sites</h1>
+    <div id="sites-container"></div>
+    <button id="add-site-btn" onclick="addSite()">+ Add Site</button>
+  </div>
+
+  <div id="site-view">
+    <div id="site-view-header">
+      <button id="back-btn" onclick="showSiteList()">← Back</button>
+      <h2 id="site-view-title"></h2>
+    </div>
+    <div id="map-container">
+      <img id="map-img" src="" alt="Site map" />
+      <canvas id="zone-canvas"></canvas>
+    </div>
+    <div id="zone-controls">
+      <button id="draw-btn" onclick="toggleDraw()">✏️ Draw Zone</button>
+      <button id="delete-btn" onclick="deleteLastZone()">🗑 Undo Last Zone</button>
+      <button id="week-btn" onclick="openNewWeek()">📅 New Week</button>
+    </div>
+    <div class="zone-panel" id="zone-panel"></div>
+  </div>
+</div>
+
+<div id="new-week-modal">
+  <div class="modal-box">
+    <h3>Start New Week?</h3>
+    <p>This will reset all zone statuses to pending. Notes will be cleared. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeNewWeek()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmNewWeek()">Yes, New Week</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "https://grounds-tracker-api.ryyvmrndfh.workers.dev";
+let currentSite = null;
+let sites = {};
+let drawing = false;
+let currentPoly = [];
+let canvas, ctx, mapImg;
+
+async function login() {
+  const pw = document.getElementById("password-input").value;
+  const res = await fetch(`${API}/auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: pw })
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    loadSites();
+  } else {
+    document.getElementById("login-error").textContent = "Wrong password.";
+  }
+}
+
+document.getElementById("password-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") login();
+});
+
+async function loadSites() {
+  const res = await fetch(`${API}/sites`);
+  const keys = await res.json();
+  const container = document.getElementById("sites-container");
+  container.innerHTML = "";
+  for (const key of keys) {
+    const data = await fetch(`${API}/site/${key.name}`).then(r => r.json());
+    sites[key.name] = data;
+    const card = document.createElement("div");
+    card.className = "site-card";
+    const done = data.zones.filter(z => z.status === "done").length;
+    const total = data.zones.length;
+    card.innerHTML = `<span class="site-name">${data.name}</span><span class="site-status">${done}/${total} zones done</span>`;
+    card.onclick = () => openSite(key.name);
+    container.appendChild(card);
+  }
+}
+
+async function addSite() {
+  const name = prompt("Site name?");
+  if (!name) return;
+  const mapUrl = prompt("Paste the aerial image URL for this site (or leave blank):");
+  const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+  const siteData = { name, mapUrl: mapUrl || "", zones: [] };
+  await fetch(`${API}/site/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(siteData)
+  });
+  loadSites();
+}
+
+function openSite(id) {
+  currentSite = id;
+  const data = sites[id];
+  document.getElementById("site-list").style.display = "none";
+  document.getElementById("site-view").style.display = "block";
+  document.getElementById("site-view-title").textContent = data.name;
+  mapImg = document.getElementById("map-img");
+  mapImg.src = data.mapUrl || "";
+  canvas = document.getElementById("zone-canvas");
+  ctx = canvas.getContext("2d");
+  mapImg.onload = () => { resizeCanvas(); drawZones(); };
+  if (mapImg.complete) { resizeCanvas(); drawZones(); }
+  renderZonePanel();
+}
+
+function resizeCanvas() {
+  canvas.width = mapImg.offsetWidth;
+  canvas.height = mapImg.offsetHeight;
+}
+
+function showSiteList() {
+  document.getElementById("site-view").style.display = "none";
+  document.getElementById("site-list").style.display = "block";
+  drawing = false;
+  document.getElementById("draw-btn").classList.remove("active");
+  loadSites();
+}
+
+function toggleDraw() {
+  drawing = !drawing;
+  document.getElementById("draw-btn").classList.toggle("active", drawing);
+  currentPoly = [];
+}
+
+canvas && canvas.addEventListener("click", handleCanvasClick);
+document.getElementById("zone-canvas").addEventListener("click", handleCanvasClick);
+
+function handleCanvasClick(e) {
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  currentPoly.push([x / canvas.width, y / canvas.height]);
+  drawZones();
+  drawCurrentPoly();
+  if (currentPoly.length >= 3 && isNearFirst(x, y)) {
+    finalizePoly();
+  }
+}
+
+function isNearFirst(x, y) {
+  if (currentPoly.length < 3) return false;
+  const fx = currentPoly[0][0] * canvas.width;
+  const fy = currentPoly[0][1] * canvas.height;
+  return Math.hypot(x - fx, y - fy) < 20;
+}
+
+function finalizePoly() {
+  const data = sites[currentSite];
+  const label = `Zone ${data.zones.length + 1}`;
+  data.zones.push({ label, points: [...currentPoly], status: "pending", note: "" });
+  currentPoly = [];
+  drawing = false;
+  document.getElementById("draw-btn").classList.remove("active");
+  saveSite();
+  drawZones();
+  renderZonePanel();
+}
+
+function deleteLastZone() {
+  const data = sites[currentSite];
+  if (data.zones.length === 0) return;
+  data.zones.pop();
+  saveSite();
+  drawZones();
+  renderZonePanel();
+}
+
+function drawZones() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const data = sites[currentSite];
+  if (!data) return;
+  for (const zone of data.zones) {
+    const colors = { done: "rgba(38,222,129,0.45)", attention: "rgba(255,159,67,0.45)", blocked: "rgba(255,107,107,0.45)", pending: "rgba(100,100,100,0.3)" };
+    ctx.beginPath();
+    zone.points.forEach(([px, py], i) => {
+      const x = px * canvas.width, y = py * canvas.height;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = colors[zone.status] || colors.pending;
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const cx = zone.points.reduce((s, p) => s + p[0], 0) / zone.points.length * canvas.width;
+    const cy = zone.points.reduce((s, p) => s + p[1], 0) / zone.points.length * canvas.height;
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(zone.label, cx, cy);
+  }
+}
+
+function drawCurrentPoly() {
+  if (currentPoly.length === 0) return;
+  ctx.beginPath();
+  currentPoly.forEach(([px, py], i) => {
+    const x = px * canvas.width, y = py * canvas.height;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = "#4a9eff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  currentPoly.forEach(([px, py]) => {
+    ctx.beginPath();
+    ctx.arc(px * canvas.width, py * canvas.height, 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#4a9eff";
+    ctx.fill();
+  });
+}
+
+function renderZonePanel() {
+  const data = sites[currentSite];
+  const panel = document.getElementById("zone-panel");
+  panel.innerHTML = "";
+  data.zones.forEach((zone, i) => {
+    const statuses = ["pending", "done", "attention", "blocked"];
+    const labels = { pending: "Pending", done: "✅ Done", attention: "⚠️ Needs Attention", blocked: "🚫 Blocked" };
+    const div = document.createElement("div");
+    div.className = "zone-item";
+    div.innerHTML = `
+      <div class="zone-item-header">
+        <span class="zone-label">${zone.label}</span>
+        <button class="status-btn status-${zone.status}" onclick="cycleStatus(${i})">${labels[zone.status]}</button>
+      </div>
+      <textarea class="zone-note" placeholder="Quick note..." onchange="updateNote(${i}, this.value)">${zone.note}</textarea>
+    `;
+    panel.appendChild(div);
+  });
+}
+
+function cycleStatus(i) {
+  const statuses = ["pending", "done", "attention", "blocked"];
+  const data = sites[currentSite];
+  const cur = statuses.indexOf(data.zones[i].status);
+  data.zones[i].status = statuses[(cur + 1) % statuses.length];
+  saveSite();
+  drawZones();
+  renderZonePanel();
+}
+
+function updateNote(i, val) {
+  sites[currentSite].zones[i].note = val;
+  saveSite();
+}
+
+async function saveSite() {
+  await fetch(`${API}/site/${currentSite}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sites[currentSite])
+  });
+}
+
+function openNewWeek() {
+  document.getElementById("new-week-modal").classList.add("open");
+}
+
+function closeNewWeek() {
+  document.getElementById("new-week-modal").classList.remove("open");
+}
+
+function confirmNewWeek() {
+  const data = sites[currentSite];
+  data.zones.forEach(z => { z.status = "pending"; z.note = ""; });
+  saveSite();
+  closeNewWeek();
+  drawZones();
+  renderZonePanel();
+}
+</script>
+</body>
+</html>
